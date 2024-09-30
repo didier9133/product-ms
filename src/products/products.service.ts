@@ -1,15 +1,9 @@
-import {
-  HttpException,
-  HttpStatus,
-  Injectable,
-  Logger,
-  Query,
-} from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PrismaService } from '../prisma.service';
 import { PaginationProductsDto } from './dto/pagination-product.dto';
-
+import { RpcException } from '@nestjs/microservices';
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger('ProductsService');
@@ -55,7 +49,10 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+      throw new RpcException({
+        statusCode: HttpStatus.NOT_FOUND,
+        message: 'Product not found',
+      });
     }
 
     return {
@@ -65,7 +62,9 @@ export class ProductsService {
 
   async update(id: number, updateProductDto: UpdateProductDto) {
     await this.findOne(id);
-    const { id: __, ...data } = updateProductDto;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _, ...data } = updateProductDto;
+
     return this.prisma.product.update({
       where: {
         id,
@@ -84,5 +83,26 @@ export class ProductsService {
         active: false,
       },
     });
+  }
+
+  async validateProduct(ids: number[]) {
+    const uniqueIds = [...new Set(ids)];
+
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: {
+          in: uniqueIds,
+        },
+      },
+    });
+
+    if (products.length !== uniqueIds.length || products.length === 0) {
+      throw new RpcException({
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: 'Some products not found',
+      });
+    }
+
+    return products;
   }
 }
